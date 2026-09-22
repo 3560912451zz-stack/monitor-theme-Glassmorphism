@@ -1,90 +1,91 @@
-# monitor-theme-default
+# Glass Monitor
 
-[monitor](https://github.com/monitor-probe/monitor) 的内置默认主题，同时作为第三方主题的参考实现。
+一个面向 [Monitor](https://github.com/monitor-probe/monitor) 的单一固定风格主题：青蓝与淡紫渐变、半透明毛玻璃卡片、写实地球和紧凑的节点面板。它是独立的 Monitor 主题，不会修改 Komari 的主题或后台配置。
 
-React + Vite + shadcn/ui，黑白配色。
+## 主要功能
 
-## 开发
+- 六张概览卡：内存、硬盘、剩余价值、累计流量、实时上行和实时下行。
+- 写实地球：按节点的国家级坐标显示当前节点国家；同一国家只显示一面旗帜，并标出该国家的节点数量。
+- 桌面端按 `Tab` 进入地球沉浸模式，再按 `Tab` 或 `Esc` 返回；卡片、工具栏和地球使用连续过渡动画。手机端不启用该快捷键。
+- 节点卡片与列表两种视图、搜索、收藏和后台顺序；离线节点自动置底。
+- 详情页显示资源、历史指标、Ping、国家和费用信息。
+- 费用面板包含固定账单、剩余价值和月度支出预估：只计算目标月份实际到期且仍计划续费的节点；一次性购买不会被当作月度续费；“不再续费”从本次到期起停止预测支出。
+- WebSocket 实时更新；连接失败时自动回退为 5 秒轮询。
+- 默认亮色；亮暗模式、收藏、视图模式和“不再续费”计划只保存在当前浏览器，不写入 Monitor 后台。
 
-启动一个 hub 实例：
+## 设计边界
 
-```bash
-monitor-hub --listen 127.0.0.1:9911 --db /tmp/monitor.db --site http://127.0.0.1:9911
+这是一个不带服务器端主题设置的单一风格主题。外观、地球样式、卡片布局和动画均使用内置默认值，不提供后台几十项主题开关。
+
+地球只使用 Monitor 提供的国家代码和国家级位置，不做城市级定位或城市翻译，也不会保存历史节点位置。节点被删除或不再出现在 `/api/nodes` 后，页面不会继续显示它。
+
+本主题不实现分组、标签、ASN/BGP 拓扑、GPU、审计、节点对比和快照等 Monitor 高级功能；这些功能仍由 Monitor 后台或其他工具负责。
+
+## 安装
+
+Monitor 主题首次安装需要主题压缩包，而不是直接填写 GitHub 仓库地址：
+
+1. 在本仓库的 Releases 下载 `theme.tar.gz`。
+2. 打开 Monitor 后台的主题页面。
+3. 将压缩包拖入上传区域并启用 `Glass Monitor`。
+
+主题包解压后应保持以下结构：
+
+```text
+glassmorphism/
+├── theme.json
+├── preview.png
+└── dist/
+    └── index.html
 ```
 
-启动开发服务器，Vite 将 `/api` 与 WebSocket 代理至 hub：
+如果使用 Hub 的 themes 目录，也可以将整个 `glassmorphism` 目录放入该目录后，在后台切换主题。`theme.json.url` 只用于 Releases 自动更新；它不是首次安装的导入链接。
+
+## 开发与本地预览
+
+需要 Node.js 20.19+（或 Node.js 22.12+）。
 
 ```bash
 npm ci
 npm run dev
 ```
 
-构建产物位于 `dist/`。提交前运行 `npm run build && npm run lint && npm test`。
+连接真实 Monitor Hub 时，Vite 会将同源 `/api` 和 WebSocket 请求交给 Hub。没有 Hub 时可使用内置模拟数据：
 
-`npm test` 校验数字格式化和实时指标的输入边界。没有测试框架，Node 自己剥掉
-类型，失败时退出码非零。
-
-## 主题包
-
-一个可安装主题是一个目录，名字必须与 `theme.json` 的 `short` 相同：
-
-```text
-<themes-dir>/<short>/
-├── theme.json
-├── preview.png        # 可选，面板上的预览图
-└── dist/
-    └── index.html
+```bash
+npm run mock
+npm run dev -- --host 127.0.0.1
 ```
 
-`theme.json` 的字段均为字符串：
+模拟数据入口位于 `scripts/mock-monitor.mjs`，只用于本地开发，不会打包进主题运行时。
 
-| 字段 | 含义 |
-|---|---|
-| `name` | 显示名称 |
-| `short` | 唯一短名，限字母、数字、`-`、`_`，取 `default` 则顶替 hub 内置的那份 |
-| `description` | 简介 |
-| `version` | 主题版本 |
-| `author` | 作者 |
-| `url` | 源码地址 |
+提交前运行完整检查：
 
-每个 tag 的 release 里的 `theme.tar.gz` 解开就是这个目录——hub 构建时嵌入的是同一个包。
+```bash
+npm run build
+npm run lint
+npm test
+```
 
-将目录复制到 hub 的 `--themes` 位置，在后台「主题」页切换，无需重启。
+构建结果在 `dist/`。发布包应包含 `theme.json`、`preview.png` 和 `dist/`，不要把 `node_modules/`、源码和开发脚本放入 `theme.tar.gz`。
 
-## 主题契约
+## Monitor 接口
 
-主题是纯静态 SPA，只能依赖下列同源接口：
+主题只依赖同源公开接口：
 
 | 接口 | 用途 |
-|---|---|
-| `GET /api/me` | 站点名、登录状态、公开页开关 |
+| --- | --- |
+| `GET /api/me` | 站点名、登录状态和公开页状态 |
 | `GET /api/nodes` | 节点列表、实时指标和累计流量 |
-| `GET /api/nodes/{id}/metrics` | 历史指标和延迟记录 |
-| `GET /api/ws` | 每 2 秒推送一次节点快照的 WebSocket |
+| `GET /api/nodes/{id}/metrics` | 历史指标和 Ping 记录 |
+| `GET /api/ws` | 实时节点快照 |
 
-`metrics` 的三个查询参数都可省：
+详情页使用 `/node/{id}`，由主题的客户端路由处理。若 Hub 前有按路径限制的反向代理或 WAF，请放行 `/node/` 前缀，以便直接刷新详情页。
 
-- `hours=N` 窗口宽度。**匿名上限 168，登录后 2160**，超出静默 clamp——降采样限的是响应行数，这个
-  上限限的是 hub 扫描多少行
-- `points=W` 调用方画得下的点数，只会让 hub 抽得更稀，不会更密
-- `series=metrics|ping` 只取要画的那一半，省掉的那半原本占响应的三分之一到三分之二
+## 项目来源与许可
 
-探测曲线的名字在响应的 `probes` 里随样本一起下发，匿名可读，所以画延迟图不需要第二个请求，也不
-需要管理员身份。
+本项目基于 Monitor 官方默认主题的接口契约和 React/Vite 工程结构进行重做，保留 MIT 许可。地球纹理和国旗素材随主题一起打包，仅用于主题展示；发布或再分发时请同时遵守各素材来源的许可。
 
-整个窗口的丢包率在响应的 `loss` 里，按探测 id 给出百分比，没丢包的探测不出现。**不要拿样本行里
-的 `loss` 自己平均**：那一个是所在桶的百分比，除数已经丢了，而各桶样本数天然不等——窗口首尾两桶
-本来就是残缺的，探测启停、节点掉线、agent 跳过一轮都会再造几个。十三次里丢一次，平均桶百分比会
-算出 50%。
+作者：3560912451zz-stack
 
-匿名访问 `GET /api/nodes` 仅返回 `public=1` 的节点，响应中不含 `ip`、`hostname`、`remark`。字段定义以 hub 的 `src/api.rs` 为准。
-
-未知路径回落到主题的 `dist/index.html`，客户端路由可用。`/admin/*` 由 hub 内置后台接管，不属于主题契约。
-
-本主题用 `/node/{id}` 作为详情页。hub 的回落对它够用，但**hub 前面若有按路径做正向白名单的反代
-或 WAF，得把这个前缀放行**：从列表点进去只是 pushState，边缘看不见，刷新详情页才会真的请求
-`/node/{id}`，症状是「点进去正常，一刷新就被拦」。
-
-## 许可
-
-MIT
+源码：[github.com/3560912451zz-stack/monitor-theme-Glassmorphism](https://github.com/3560912451zz-stack/monitor-theme-Glassmorphism)

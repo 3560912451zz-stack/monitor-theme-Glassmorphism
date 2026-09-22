@@ -1,8 +1,8 @@
 {
-  "name": "默认主题",
-  "short": "default",
-  "description": "内置状态面板，黑白配色",
+  "name": "Glass Monitor",
+  "short": "glassmorphism",
+  "description": "青蓝淡紫毛玻璃监控主题，带写实地球与费用预测",
   "version": "1.0.0",
-  "author": "stqfdyr",
-  "url": "https://github.com/monitor-probe/monitor-theme-default"
+  "author": "3560912451zz-stack",
+  "url": "https://github.com/3560912451zz-stack/monitor-theme-Glassmorphism"
 }

@@ -1,10 +1,11 @@
-import { ArrowDown, ArrowUp } from "lucide-react"
+import { ArrowDown, ArrowUp, Star } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
-import { bytes, daysUntil, FOREVER, osName, pair, percent, rate, uptime } from "@/lib/format"
+import { countryName, normalizeCountryCode } from "@/lib/country"
+import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, uptime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 /** Which direction the plan meters, matching the node's traffic_mode. */
@@ -56,10 +57,12 @@ export function Status({ node }: { node: Node }) {
 
 /** Where the machine is, in the same shape as the badge next to it. */
 export function Country({ node }: { node: Node }) {
-  if (!node.country) return null
+  const code = normalizeCountryCode(node.country)
+  if (!code) return null
   return (
-    <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
-      {node.country}
+    <Badge variant="outline" className="shrink-0 gap-1 font-normal text-muted-foreground">
+      <img src={`/images/flags/${code}.svg`} alt="" className="size-3.5 rounded-[2px] object-cover" />
+      {countryName(code)}
     </Badge>
   )
 }
@@ -85,7 +88,17 @@ function Expiry({ node }: { node: Node }) {
   )
 }
 
-export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
+export function NodeCard({
+  node,
+  onOpen,
+  favorite = false,
+  onToggleFavorite,
+}: {
+  node: Node
+  onOpen: () => void
+  favorite?: boolean
+  onToggleFavorite?: () => void
+}) {
   const m = node.metrics
 
   return (
@@ -95,7 +108,7 @@ export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
       // OS line below does not wrap, so on a phone the card would grow past its
       // column and scroll the page sideways. The truncate inside only takes effect
       // once the card is allowed to be narrower.
-      className="min-w-0 cursor-pointer gap-0 p-4 transition-colors hover:border-ring"
+      className="glass-card node-card min-w-0 cursor-pointer gap-0 p-4 transition-[transform,border-color,box-shadow] hover:-translate-y-0.5 hover:border-sky-300/70"
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
@@ -113,9 +126,23 @@ export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
           </p>
         </div>
         {/* State right, identity left, one line each. */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Status node={node} />
-          <Expiry node={node} />
+        <div className="flex shrink-0 items-start gap-1">
+          <div className="flex flex-col items-end gap-1">
+            <Status node={node} />
+            <Expiry node={node} />
+          </div>
+          {onToggleFavorite && (
+            <button
+              type="button"
+              className="node-favorite"
+              aria-label={favorite ? "取消收藏" : "收藏节点"}
+              title={favorite ? "取消收藏" : "收藏节点"}
+              onClick={(event) => { event.stopPropagation(); onToggleFavorite() }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <Star className={favorite ? "fill-amber-400 text-amber-500" : "text-muted-foreground"} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -166,6 +193,11 @@ export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
             <span className="tnum inline-flex items-center gap-1.5 text-muted-foreground">
               <ArrowUp className="size-3" />
               {bytes(node.total_tx)}
+            </span>
+            <span className="col-span-2 truncate text-[11px] text-muted-foreground">
+              {node.price > 0
+                ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}`
+                : "免费节点"}
             </span>
           </div>
         </>
