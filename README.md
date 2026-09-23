@@ -29,17 +29,16 @@ Monitor 主题首次安装需要主题压缩包，而不是直接填写 GitHub �
 2. 打开 Monitor 后台的主题页面。
 3. 将压缩包拖入上传区域并启用 `Glass Monitor`。
 
-主题包解压后应保持以下结构：
+上传给 Monitor 的 `theme.tar.gz` 必须把主题文件直接放在压缩包根目录（不要再套一层 `glassmorphism/`）：
 
 ```text
-glassmorphism/
-├── theme.json
-├── preview.png
-└── dist/
-    └── index.html
+theme.json
+preview.png
+dist/
+└── index.html
 ```
 
-如果使用 Hub 的 themes 目录，也可以将整个 `glassmorphism` 目录放入该目录后，在后台切换主题。`theme.json.url` 只用于 Releases 自动更新；它不是首次安装的导入链接。
+如果手动放入 Hub 的 themes 目录，应先创建与 `theme.json.short` 相同的目录（本主题为 `glassmorphism`），再把上面的三个项目放进去：`themes/glassmorphism/theme.json`、`themes/glassmorphism/preview.png` 和 `themes/glassmorphism/dist/`。`theme.json.url` 只用于 Releases 自动更新；它不是首次安装的导入链接。
 
 ## 开发与本地预览
 
