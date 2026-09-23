@@ -5,13 +5,11 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts"
 
-import { Badge } from "@/components/ui/badge"
+import { DetailOverview } from "@/components/DetailOverview"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Country, Status } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
-import { countryName } from "@/lib/country"
 import {
-  axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks,
+  axisBytes, axisTop, bytes, clockFor, quarters, rate, timeTicks,
 } from "@/lib/format"
 
 type Point = {
@@ -138,17 +136,14 @@ function despike(points: PingPoint[], window = 7, sigmas = 3): PingPoint[] {
   })
 }
 
-function Fact({ label, value }: { label: string; value?: string | number | null }) {
-  if (value === null || value === undefined || value === "") return null
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm">{value}</dd>
-    </div>
-  )
-}
-
-export function NodeDetail({ node }: { node: Node }) {
+export function NodeDetail({ node, nodes, onBack, onOpen, favorite, onToggleFavorite }: {
+  node: Node
+  nodes: Node[]
+  onBack: () => void
+  onOpen: (id: number) => void
+  favorite: boolean
+  onToggleFavorite: () => void
+}) {
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resources")
   // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
   // different questions.
@@ -204,7 +199,6 @@ export function NodeDetail({ node }: { node: Node }) {
     return () => { active = false }
   }, [node.id, hours, tab])
 
-  const m = node.metrics
   // One series per probe that reported, labelled from the names the samples
   // arrived with. Memoised, as are the two below: the node prop changes every few
   // seconds as live metrics arrive, and rebuilding the chart's data array on those
@@ -307,49 +301,9 @@ export function NodeDetail({ node }: { node: Node }) {
 
   return (
     <div className="node-detail space-y-4">
-      <section className="glass-card node-detail-hero">
-      <div className="node-detail-title flex items-center gap-2">
-        <h2 className="truncate text-lg font-medium">{node.name}</h2>
-        <Country node={node} />
-        <Status node={node} />
-        {node.agent_version && (
-          <Badge variant="outline" className="font-normal">
-            agent {node.agent_version}
-          </Badge>
-        )}
-      </div>
+      <DetailOverview node={node} nodes={nodes} onBack={onBack} onOpen={onOpen} favorite={favorite} onToggleFavorite={onToggleFavorite} />
 
-      {/* One flat row of facts: what is left after the traffic figures moved
-          out is one machine's spec sheet, and a box around a single topic is
-          just a box. Three across at lg, two at md, one on a phone -- a kernel
-          version or a CPU model needs about 270px to stay whole. */}
-      <dl className="node-detail-facts grid gap-x-3 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
-        <Fact label="国家 / 地区" value={countryName(node.country)} />
-        <Fact label="系统" value={[osName(node.os), node.kernel].filter(Boolean).join(" · ")} />
-        <Fact
-          label="CPU"
-          value={node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
-        />
-        <Fact label="内存 / 硬盘" value={`${bytes(node.mem_total)} / ${bytes(node.disk_total)}`} />
-        <Fact
-          label="架构"
-          value={[node.arch, node.virt !== "none" ? node.virt : "", m ? `${m.procs} 进程` : ""]
-            .filter(Boolean)
-            .join(" · ")}
-        />
-        <Fact label="今日流量" value={`↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}`} />
-        <Fact label="费用" value={node.price > 0
-          ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}`
-          : "免费"} />
-        <Fact label="到期" value={node.expires_at ? `${node.expires_at} 到期` : FOREVER} />
-      </dl>
-
-      {node.remark && (
-        <p className="node-detail-remark rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{node.remark}</p>
-      )}
-      </section>
-
-      <section className="glass-card node-detail-charts">
+      <section className="node-detail-charts">
       <div className="node-detail-chart-toolbar space-y-2 border-b pb-4">
         <div className="flex gap-1">
           {TABS.map((t) => (

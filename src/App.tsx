@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
-import { Coins, LayoutGrid, List, Moon, Search, Star, Sun, Wrench } from "lucide-react"
+import { Activity, CalendarClock, Database, LayoutGrid, List, Moon, PlugZap, Search, Star, Sun, TriangleAlert, Wrench } from "lucide-react"
 
 import { EarthStage } from "@/components/EarthStage"
 import { FinanceDialog } from "@/components/FinanceDialog"
@@ -10,8 +10,19 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
 import { countryName } from "@/lib/country"
+import { daysUntil } from "@/lib/format"
 
 type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean }
+type QuickControl = "favorite" | "totalTraffic" | "peak" | "offline" | "highLoad" | "expiring"
+
+const QUICK_CONTROLS = [
+  { key: "favorite", label: "收藏", icon: Star },
+  { key: "totalTraffic", label: "总流量", icon: Database },
+  { key: "peak", label: "峰值", icon: Activity },
+  { key: "offline", label: "离线", icon: PlugZap },
+  { key: "highLoad", label: "高负载", icon: TriangleAlert },
+  { key: "expiring", label: "即将到期", icon: CalendarClock },
+] as const
 
 // Split out because recharts is most of this bundle and the list page draws no
 // chart. The landing page is 242 kB rather than 629 kB (77 kB gzipped against
@@ -77,9 +88,10 @@ export default function App() {
   const [financeOpen, setFinanceOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [favorites, setFavorites] = useState<Set<number>>(readFavorites)
-  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [quickControl, setQuickControl] = useState<QuickControl | null>(null)
   const [view, setViewState] = useState<"card" | "list">(readView)
   const [immersive, setImmersive] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const loadMe = useCallback(() => {
     // `|| "..."` because an empty message reads as no error: api() falls back to
@@ -117,15 +129,33 @@ export default function App() {
     return [...backendOrder.filter((node) => node.online), ...backendOrder.filter((node) => !node.online)]
   }, [nodes])
   const selected = sorted.find((n) => n.id === open)
-  const filtered = useMemo(() => {
+  const searchResults = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     return sorted.filter((node) => {
-      if (favoritesOnly && !favorites.has(node.id)) return false
       if (!query) return true
       return [node.name, node.country, countryName(node.country), node.os, node.arch, node.virt, node.cpu_name]
         .some((value) => String(value ?? "").toLocaleLowerCase().includes(query))
     })
-  }, [sorted, search, favoritesOnly, favorites])
+  }, [sorted, search])
+  const quickCounts = useMemo(() => ({
+    favorite: searchResults.filter((node) => favorites.has(node.id)).length,
+    totalTraffic: searchResults.length,
+    peak: searchResults.length,
+    offline: searchResults.filter((node) => !node.online).length,
+    highLoad: searchResults.filter((node) => (node.metrics?.cpu ?? 0) >= 80).length,
+    expiring: searchResults.filter((node) => { const days = daysUntil(node.expires_at); return days !== null && days >= 0 && days <= 7 }).length,
+  }), [searchResults, favorites])
+  const filtered = useMemo(() => {
+    switch (quickControl) {
+      case "favorite": return searchResults.filter((node) => favorites.has(node.id))
+      case "totalTraffic": return [...searchResults].sort((a, b) => b.total_rx + b.total_tx - a.total_rx - a.total_tx)
+      case "peak": return [...searchResults].sort((a, b) => Math.max(b.metrics?.net_rx ?? 0, b.metrics?.net_tx ?? 0) - Math.max(a.metrics?.net_rx ?? 0, a.metrics?.net_tx ?? 0))
+      case "offline": return searchResults.filter((node) => !node.online)
+      case "highLoad": return searchResults.filter((node) => (node.metrics?.cpu ?? 0) >= 80)
+      case "expiring": return searchResults.filter((node) => { const days = daysUntil(node.expires_at); return days !== null && days >= 0 && days <= 7 })
+      default: return searchResults
+    }
+  }, [searchResults, quickControl, favorites])
 
   const setView = (next: "card" | "list") => {
     setViewState(next)
@@ -145,13 +175,13 @@ export default function App() {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      const editing = target?.matches("input, textarea, select, [contenteditable='true']")
+      const interactive = target?.closest('a[href], button, input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"]), [role="button"], [role="checkbox"], [role="combobox"], [role="menuitem"], [role="option"], [role="switch"], [role="tab"]')
       if (event.key === "Escape" && immersive) {
         event.preventDefault()
         setImmersive(false)
         return
       }
-      if (event.key !== "Tab" || event.shiftKey || editing || financeOpen || open !== null || innerWidth < 768) return
+      if (event.key !== "Tab" || event.defaultPrevented || event.repeat || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || interactive || financeOpen || open !== null || innerWidth < 768 || document.querySelector('[role="dialog"][data-state="open"]')) return
       event.preventDefault()
       setImmersive((value) => !value)
     }
@@ -184,31 +214,25 @@ export default function App() {
 
   return (
     <div className={`app-shell min-h-svh${immersive ? " is-earth-immersive" : ""}`}>
-      <header className="site-header sticky top-0 z-10 border-b bg-background/60 backdrop-blur-xl" data-earth-motion-item style={{ "--motion-index": -2 } as React.CSSProperties}>
-        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
+      <header className="site-header sticky top-0 z-10">
+        <div className="site-header__inner">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. */}
-          <button className="font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
-            {me.site_name || "Monitor"}
+          <button className="site-brand" onClick={() => go(null)}>
+            <span className="site-brand__avatar"><img src="/favicon.ico" alt="" onError={(event) => { event.currentTarget.style.display = "none" }} />{(me.site_name || "M").slice(0, 1)}</span>
+            <span>{me.site_name || "Monitor"}</span>
           </button>
           <div className="flex-1" />
-          {/* The panel is a separate app built into the hub, not part of this
-              theme, so this is a navigation rather than a route. */}
-          <Button variant="ghost" size="sm" onClick={() => setFinanceOpen(true)} disabled={!nodes}>
-            <Coins /> 费用
-          </Button>
-          <Button variant="ghost" size="sm" asChild>
-            <a href="/admin/">
-              <Wrench /> {me.authed ? "进入后台" : "登录"}
-            </a>
-          </Button>
-          <Button variant="ghost" size="icon" onClick={toggleTheme} title="切换主题">
+          <Button variant="ghost" size="icon-sm" className="site-header__action" onClick={toggleTheme} title="切换主题" aria-label="切换主题">
             {dark ? <Sun /> : <Moon />}
+          </Button>
+          <Button variant="ghost" size="icon-sm" className="site-header__action" asChild>
+            <a href="/admin/" title={me.authed ? "后台管理" : "登录"} aria-label={me.authed ? "后台管理" : "登录"}><Wrench /></a>
           </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-4 sm:px-6">
+      <main className="site-main">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {open !== null ? (
@@ -216,7 +240,7 @@ export default function App() {
             <Skeleton className="h-96" />
           ) : selected ? (
             <Suspense fallback={<Skeleton className="h-96" />}>
-              <NodeDetail node={selected} />
+              <NodeDetail node={selected} nodes={sorted} onBack={() => go(null)} onOpen={go} favorite={favorites.has(selected.id)} onToggleFavorite={() => toggleFavorite(selected.id)} />
             </Suspense>
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">
@@ -233,24 +257,30 @@ export default function App() {
           <>
             <section className="overview-grid">
               <Summary nodes={sorted} onFinance={() => setFinanceOpen(true)} />
-              <EarthStage nodes={filtered} dark={dark} immersive={immersive} onExit={() => setImmersive(false)} />
+              <EarthStage nodes={sorted} dark={dark} immersive={immersive} onExit={() => setImmersive(false)} />
             </section>
 
-            <div className="node-toolbar glass-card" data-earth-motion-item style={{ "--motion-index": 6 } as React.CSSProperties}>
-              <label className="node-search">
-                <Search />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索节点" />
-              </label>
-              <div className="node-toolbar__meta">
-                <span>{filtered.length} / {sorted.length} 个节点</span>
-                <span className="hidden md:inline">桌面端按 Tab 进入地球模式</span>
+            <div className="node-toolbar">
+              <div className="node-toolbar__filters" data-earth-motion-item style={{ "--motion-index": 6 } as React.CSSProperties}>
+                <div className="node-toolbar__tabs"><button className="is-active">全部节点</button></div>
+                <div className="node-toolbar__quick">
+                  {QUICK_CONTROLS.map(({ key, label, icon: Icon }) => (
+                    <button
+                      key={key}
+                      className={quickControl === key ? "is-active" : ""}
+                      aria-pressed={quickControl === key}
+                      onClick={() => setQuickControl((value) => value === key ? null : key)}
+                    ><Icon /><span>{label}</span><small>{quickCounts[key]}</small></button>
+                  ))}
+                </div>
               </div>
-              <Button variant={favoritesOnly ? "secondary" : "ghost"} size="sm" onClick={() => setFavoritesOnly((value) => !value)} title="只看收藏">
-                <Star className={favoritesOnly ? "fill-amber-400 text-amber-500" : ""} /> 收藏
-              </Button>
-              <div className="view-toggle" aria-label="节点视图">
-                <button className={view === "card" ? "active" : ""} onClick={() => setView("card")} title="卡片视图"><LayoutGrid /></button>
-                <button className={view === "list" ? "active" : ""} onClick={() => setView("list")} title="列表视图"><List /></button>
+              <div className="node-toolbar__actions" data-earth-motion-item style={{ "--motion-index": 7 } as React.CSSProperties}>
+                <button className={view === "card" ? "is-active" : ""} onClick={() => setView("card")} title="卡片视图" aria-label="卡片视图"><LayoutGrid /></button>
+                <button className={view === "list" ? "is-active" : ""} onClick={() => setView("list")} title="列表视图" aria-label="列表视图"><List /></button>
+                <div className={`node-toolbar__search${searchOpen || search ? " is-open" : ""}`}>
+                  <Search />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setSearchOpen(true)} onBlur={() => { if (!search) setSearchOpen(false) }} placeholder="搜索名称、地区、CPU" aria-label="搜索节点" />
+                </div>
               </div>
             </div>
 
@@ -261,7 +291,7 @@ export default function App() {
             ) : (
               <div className="node-card-grid">
                 {filtered.map((n: Node, index) => (
-                  <div key={n.id} data-earth-motion-item style={{ "--motion-index": index + 7 } as React.CSSProperties}>
+                  <div key={n.id} data-earth-motion-item style={{ "--motion-index": index + 8 } as React.CSSProperties}>
                     <NodeCard node={n} onOpen={() => go(n.id)} favorite={favorites.has(n.id)} onToggleFavorite={() => toggleFavorite(n.id)} />
                   </div>
                 ))}

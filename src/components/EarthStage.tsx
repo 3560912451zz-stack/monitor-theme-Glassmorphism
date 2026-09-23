@@ -49,12 +49,17 @@ export function EarthStage({
     width: window.innerWidth,
     height: window.innerHeight,
   }
-  const size = Math.max(280, Math.min(viewport.width * 0.72, viewport.height * 0.78, 760))
+  // Komari's inline globe renders in a 28rem frame and grows to at most 36rem.
+  // Keep those exact frame sizes so the real globe, not just its wrapper, follows
+  // the same path during the Tab transition.
+  const size = Math.max(280, Math.min(viewport.width * 0.86, viewport.height * 0.68, 576))
   const dockedBounds = bounds ? (() => {
-    const dockedSize = Math.min(bounds.width, bounds.height)
+    const dockedSize = Math.min(bounds.width, 472)
     return {
       left: bounds.left + (bounds.width - dockedSize) / 2,
-      top: bounds.top + (bounds.height - dockedSize) / 2,
+      // Komari's mobile globe frame sits below its placeholder's leading edge;
+      // the desktop frame overlaps it instead. Keep the summary tiles in place.
+      top: bounds.top + (viewport.width <= 760 ? 9 : -14),
       width: dockedSize,
       height: dockedSize,
     }
