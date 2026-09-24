@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Activity, CalendarClock, Database, LayoutGrid, List, Moon, PlugZap, Search, Star, Sun, TriangleAlert, Wrench } from "lucide-react"
 
 import { EarthStage } from "@/components/EarthStage"
@@ -79,6 +79,100 @@ function readView(): "card" | "list" {
   try { return localStorage.getItem("monitor-theme-view-v1") === "list" ? "list" : "card" } catch { return "card" }
 }
 
+const EARTH_CARD_DURATION = 400
+const EARTH_CARD_STAGGER = 25
+const EARTH_CARD_RETURN_STAGGER = 15
+const EARTH_NODE_EXIT_DELAY = 20
+
+function clearEarthMotionItems(root: HTMLElement | null) {
+  if (!root) return
+  root.querySelectorAll<HTMLElement>("[data-earth-motion-item]").forEach((element) => {
+    delete element.dataset.earthExitActive
+    element.style.removeProperty("--earth-card-exit-delay")
+    element.style.removeProperty("--earth-card-return-delay")
+    element.style.removeProperty("--earth-card-exit-x")
+    element.style.removeProperty("--earth-card-exit-y")
+    element.style.removeProperty("--earth-card-exit-rotation")
+    element.style.removeProperty("z-index")
+  })
+}
+
+function prepareEarthMotion(root: HTMLElement | null) {
+  if (!root) return { exitDelay: 0, returnDelay: 0 }
+  clearEarthMotionItems(root)
+
+  const viewportWidth = innerWidth
+  const viewportHeight = innerHeight
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>("[data-earth-motion-item]"))
+    .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+
+  candidates.forEach(({ element }) => { element.dataset.earthExitActive = "false" })
+  const visible = candidates
+    .filter(({ rect }) => rect.width > 0 && rect.height > 0
+      && rect.bottom >= -64 && rect.top <= viewportHeight + 64
+      && rect.right >= -64 && rect.left <= viewportWidth + 64)
+    .sort((a, b) => Math.abs(a.rect.top - b.rect.top) > 4
+      ? a.rect.top - b.rect.top : a.rect.left - b.rect.left)
+
+  let maxExitDelay = 0
+  let maxReturnDelay = 0
+  const configure = (items: typeof visible, baseDelay: number, stagger: boolean) => {
+    items.forEach(({ element, rect }, index) => {
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      const exitsRight = centerX > viewportWidth / 2 + Math.min(96, viewportWidth * .12)
+        || (Math.abs(centerX - viewportWidth / 2) <= Math.min(96, viewportWidth * .12) && index % 2 === 1)
+      const exitX = exitsRight ? viewportWidth - rect.left + 32 : -(rect.right + 32)
+      const exitY = Math.max(-32, Math.min(32, (centerY - viewportHeight / 2) * .08))
+      const order = stagger ? Math.min(index, 12) : 0
+      const returnOrder = stagger ? Math.min(items.length - 1 - index, 12) : 0
+      const exitDelay = baseDelay + order * EARTH_CARD_STAGGER
+      const returnDelay = returnOrder * EARTH_CARD_RETURN_STAGGER
+      maxExitDelay = Math.max(maxExitDelay, exitDelay)
+      maxReturnDelay = Math.max(maxReturnDelay, returnDelay)
+      element.dataset.earthExitActive = "true"
+      element.style.setProperty("--earth-card-exit-delay", `${exitDelay}ms`)
+      element.style.setProperty("--earth-card-return-delay", `${returnDelay}ms`)
+      element.style.setProperty("--earth-card-exit-x", `${exitX}px`)
+      element.style.setProperty("--earth-card-exit-y", `${exitY}px`)
+      element.style.setProperty("--earth-card-exit-rotation", exitsRight ? "2deg" : "-2deg")
+    })
+  }
+
+  configure(visible.filter(({ element }) => element.classList.contains("summary-tile")), 0, false)
+
+  const nodeItems = visible.filter(({ element }) => element.closest(".node-card-grid"))
+  // When adjacent cards leave toward the same side, the inside card should
+  // cover the outside card.  Grid siblings paint in DOM order by default,
+  // which makes the fourth column cover the third; use distance from the
+  // nearest edge to keep both sides visually symmetrical: 1,2,2,1.
+  const columns: Array<{ left: number; items: typeof nodeItems }> = []
+  nodeItems.forEach((item) => {
+    const column = columns.find(({ left }) => Math.abs(left - item.rect.left) < 8)
+    if (column) column.items.push(item)
+    else columns.push({ left: item.rect.left, items: [item] })
+  })
+  columns.sort((a, b) => a.left - b.left)
+  columns.forEach((column, columnIndex) => {
+    const stack = 10 + Math.min(columnIndex, columns.length - 1 - columnIndex)
+    column.items.forEach(({ element }) => element.style.setProperty("z-index", String(stack)))
+  })
+  configure(visible.filter(({ element }) => element.closest(".node-card-grid, .node-list-wrap")), EARTH_NODE_EXIT_DELAY, true)
+
+  root.querySelectorAll<HTMLElement>(".node-toolbar [data-earth-motion-item]").forEach((element) => {
+    const rect = element.getBoundingClientRect()
+    const exitsRight = element.classList.contains("node-toolbar__actions")
+    element.dataset.earthExitActive = "true"
+    element.style.setProperty("--earth-card-exit-x", `${exitsRight ? viewportWidth - rect.left + 32 : -(rect.right + 32)}px`)
+    element.style.setProperty("--earth-card-exit-y", "0px")
+    element.style.setProperty("--earth-card-exit-rotation", "0deg")
+    element.style.setProperty("--earth-card-exit-delay", exitsRight ? "25ms" : "0ms")
+    element.style.setProperty("--earth-card-return-delay", exitsRight ? "0ms" : "15ms")
+  })
+
+  return { exitDelay: maxExitDelay, returnDelay: maxReturnDelay }
+}
+
 export default function App() {
   const [dark, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
@@ -91,6 +185,12 @@ export default function App() {
   const [quickControl, setQuickControl] = useState<QuickControl | null>(null)
   const [view, setViewState] = useState<"card" | "list">(readView)
   const [immersive, setImmersive] = useState(false)
+  const [reversing, setReversing] = useState(false)
+  const [headerScrolled, setHeaderScrolled] = useState(false)
+  const appShellRef = useRef<HTMLDivElement>(null)
+  const earthPhaseRef = useRef<"inline" | "entering" | "immersive" | "returning">("inline")
+  const earthMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const earthMotionDelaysRef = useRef({ exitDelay: 0, returnDelay: 0 })
   const [searchOpen, setSearchOpen] = useState(false)
 
   const loadMe = useCallback(() => {
@@ -111,6 +211,13 @@ export default function App() {
     // node opened: 2.6s click-to-chart on 4G against 1.4s unsplit, 1.7s warm.
     void loadDetail()
   }, [loadMe])
+
+  useEffect(() => {
+    const syncHeader = () => setHeaderScrolled(window.scrollY > 4)
+    syncHeader()
+    window.addEventListener("scroll", syncHeader, { passive: true })
+    return () => window.removeEventListener("scroll", syncHeader)
+  }, [])
 
   // The status page was closed while this tab was open. `me` holds whatever it
   // reported at load, so it is re-queried; the effect below then directs an
@@ -172,27 +279,50 @@ export default function App() {
     })
   }
 
+  const requestEarthScene = useCallback((next: boolean) => {
+    if (next === immersive) return
+    const previousPhase = earthPhaseRef.current
+    if (next && previousPhase === "inline")
+      earthMotionDelaysRef.current = prepareEarthMotion(appShellRef.current)
+
+    const skipStagger = next ? previousPhase === "returning" : previousPhase === "entering"
+    if (earthMotionTimerRef.current) clearTimeout(earthMotionTimerRef.current)
+    earthPhaseRef.current = next ? "entering" : "returning"
+    setReversing(skipStagger)
+    setImmersive(next)
+
+    const delay = skipStagger ? 0 : next
+      ? earthMotionDelaysRef.current.exitDelay
+      : earthMotionDelaysRef.current.returnDelay
+    earthMotionTimerRef.current = setTimeout(() => {
+      earthPhaseRef.current = next ? "immersive" : "inline"
+      setReversing(false)
+      if (!next) clearEarthMotionItems(appShellRef.current)
+      earthMotionTimerRef.current = null
+    }, Math.max(600, EARTH_CARD_DURATION + delay) + 80)
+  }, [immersive])
+
+  useEffect(() => () => {
+    if (earthMotionTimerRef.current) clearTimeout(earthMotionTimerRef.current)
+    clearEarthMotionItems(appShellRef.current)
+  }, [])
+
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const interactive = target?.closest('a[href], button, input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"]), [role="button"], [role="checkbox"], [role="combobox"], [role="menuitem"], [role="option"], [role="switch"], [role="tab"]')
       if (event.key === "Escape" && immersive) {
         event.preventDefault()
-        setImmersive(false)
+        requestEarthScene(false)
         return
       }
       if (event.key !== "Tab" || event.defaultPrevented || event.repeat || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || interactive || financeOpen || open !== null || innerWidth < 768 || document.querySelector('[role="dialog"][data-state="open"]')) return
       event.preventDefault()
-      setImmersive((value) => !value)
+      requestEarthScene(!immersive)
     }
     addEventListener("keydown", keydown)
     return () => removeEventListener("keydown", keydown)
-  }, [financeOpen, immersive, open])
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("earth-immersive", immersive)
-    return () => document.documentElement.classList.remove("earth-immersive")
-  }, [immersive])
+  }, [financeOpen, immersive, open, requestEarthScene])
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
   // name. The site name rather than a fixed string, since the hub lets an operator
@@ -213,8 +343,8 @@ export default function App() {
   if (!me.public_page && !me.authed) return null
 
   return (
-    <div className={`app-shell min-h-svh${immersive ? " is-earth-immersive" : ""}`}>
-      <header className="site-header sticky top-0 z-10">
+    <div ref={appShellRef} className={`app-shell min-h-svh${immersive ? " is-earth-immersive" : ""}${reversing ? " is-earth-reversing" : ""}`}>
+      <header className={`site-header sticky top-0 z-10${headerScrolled ? " site-header--scrolled" : ""}`}>
         <div className="site-header__inner">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. */}
@@ -257,7 +387,7 @@ export default function App() {
           <>
             <section className="overview-grid">
               <Summary nodes={sorted} onFinance={() => setFinanceOpen(true)} />
-              <EarthStage nodes={sorted} dark={dark} immersive={immersive} onExit={() => setImmersive(false)} />
+              <EarthStage nodes={sorted} dark={dark} immersive={immersive} onExit={() => requestEarthScene(false)} />
             </section>
 
             <div className="node-toolbar">

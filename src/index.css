@@ -147,34 +147,31 @@
 }
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
 .summary-tile { min-height: 142px; }
-.earth-placeholder { position: relative; z-index: 1; width: 100%; height: 100%; min-height: 300px; }
+.earth-placeholder { position: relative; width: 100%; height: 100%; min-height: 300px; }
 .earth-stage {
-  position: fixed;
-  z-index: 1;
-  overflow: hidden;
-  border-radius: 50%;
-  transition:
-    left 950ms cubic-bezier(.22,.72,.18,1),
-    top 950ms cubic-bezier(.22,.72,.18,1),
-    width 950ms cubic-bezier(.22,.72,.18,1),
-    height 950ms cubic-bezier(.22,.72,.18,1),
-    filter 950ms ease;
-  will-change: left, top, width, height;
+  position: relative;
+  /* Keep the inline globe behind the content that follows it.  The detached
+     fullscreen state raises this same stage to z-index 70 below. */
+  z-index: 0;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border-radius: 1.5rem;
+  background: transparent;
+  isolation: isolate;
+  transition: border-radius 600ms cubic-bezier(.3,.7,.3,1);
 }
-.earth-stage.is-immersive { z-index: 35; filter: drop-shadow(0 28px 55px rgb(15 23 42 / 20%)); }
 .earth-globe-host {
-  position: absolute;
-  left: 0;
-  top: 0;
+  position: relative;
+  flex: none;
   overflow: hidden;
   border-radius: 50%;
   clip-path: circle(49.8% at 50% 50%);
   background: transparent;
   cursor: grab;
-  transform: scale(var(--earth-render-scale, 1));
-  transform-origin: left top;
-  transition: transform 950ms cubic-bezier(.22,.72,.18,1);
-  will-change: transform;
 }
 .earth-globe-host:active { cursor: grabbing; }
 .earth-globe-host canvas, .earth-globe-host .scene-container { background: transparent !important; outline: 0; }
@@ -185,7 +182,7 @@
   transition: opacity 420ms ease, filter 420ms ease;
   will-change: opacity, filter;
 }
-.earth-flag img { width: 1.35rem; height: 1.35rem; display: block; border-radius: .2rem; object-fit: cover; box-shadow: 0 8px 20px rgb(15 23 42 / 28%); }
+.earth-flag img { width: 1.2rem; height: 1.2rem; display: block; border-radius: .2rem; object-fit: cover; box-shadow: 0 8px 20px rgb(15 23 42 / 28%); }
 .earth-counts {
   position: absolute;
   z-index: 2;
@@ -290,29 +287,22 @@
 .dark .node-detail-charts { box-shadow: 0 18px 52px rgb(0 0 0 / 18%); }
 
 [data-earth-motion-item] {
-  --exit-x: -115vw;
   position: relative;
   z-index: 2;
-  transition:
-    opacity 820ms ease,
-    transform 900ms cubic-bezier(.22,.72,.18,1),
-    filter 820ms ease;
-  transition-delay: 0ms;
-  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform-origin: center;
+  transition: transform 400ms cubic-bezier(.3,.7,.3,1) var(--earth-card-return-delay, 0ms);
+  will-change: transform;
 }
-.summary-grid > :nth-child(even), .node-card-grid > :nth-child(even) { --exit-x: 115vw; }
-.summary-grid > :nth-child(3n+1) { --exit-x: -115vw; }
-.summary-grid > :nth-child(3n) { --exit-x: 115vw; }
-.site-header[data-earth-motion-item] { --exit-x: 0; --exit-y: -110%; }
-.node-toolbar[data-earth-motion-item] { --exit-x: -115vw; }
-.is-earth-immersive [data-earth-motion-item] {
+.is-earth-immersive [data-earth-motion-item][data-earth-exit-active="true"] {
   pointer-events: none;
-  opacity: 0;
-  filter: blur(5px);
-  transform: translate3d(var(--exit-x), var(--exit-y, 0), 0) rotate(var(--exit-rotate, 0deg));
-  transition-delay: calc(max(var(--motion-index), 0) * 42ms);
+  transform: translate3d(var(--earth-card-exit-x), var(--earth-card-exit-y, 0px), 0)
+    rotate(var(--earth-card-exit-rotation, 0deg));
+  transition-delay: var(--earth-card-exit-delay, 0ms);
 }
-html.earth-immersive, html.earth-immersive body { overflow: hidden; }
+.is-earth-reversing [data-earth-motion-item][data-earth-exit-active="true"] {
+  transition-delay: 0ms !important;
+}
 
 @media (max-width: 1120px) {
   .node-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -516,6 +506,19 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   border: 0;
   background: transparent;
   backdrop-filter: none;
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease, backdrop-filter 200ms ease;
+}
+.site-header--scrolled {
+  border-bottom: 1px solid rgb(226 232 240 / 58%);
+  background: rgb(241 245 249 / 76%);
+  box-shadow: 0 8px 24px rgb(30 64 175 / 5%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+.dark .site-header--scrolled {
+  border-bottom-color: rgb(255 255 255 / 8%);
+  background: rgb(10 14 22 / 76%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 14%);
 }
 .site-header__inner {
   display: flex;
@@ -566,7 +569,9 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   background: color-mix(in srgb, var(--background) 50%, transparent);
   color: var(--foreground);
   backdrop-filter: blur(4px);
-  transition: background-color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    transform 400ms cubic-bezier(.3,.7,.3,1) var(--earth-card-return-delay, 0ms);
 }
 .summary-tile:hover { background: var(--background); }
 .summary-tile--action { cursor: pointer; }
@@ -578,28 +583,68 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .summary-tile__bottom span { overflow: hidden; text-overflow: ellipsis; color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
 .summary-tile__bottom .summary-tile__detail { min-width: 0; font-weight: 400; }
 
-.earth-placeholder { position: relative; z-index: 0; width: 100%; height: 200px; min-height: 0; }
+.earth-placeholder { position: relative; width: 100%; height: 200px; min-height: 0; }
+.earth-stage-portal { width: 100%; height: 100%; }
+.earth-stage-portal.is-detached { width: 0; height: 0; }
 .earth-stage {
-  z-index: 1;
+  position: relative;
+  /* Inline mode stays below the node content; the detached mode remains in
+     this same low layer so the globe never pops above the cards. */
+  z-index: 0;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
   overflow: visible;
-  border-radius: 50%;
-  filter: none;
-  transition: left 600ms cubic-bezier(.3,.7,.3,1), top 600ms cubic-bezier(.3,.7,.3,1), width 600ms cubic-bezier(.3,.7,.3,1), height 600ms cubic-bezier(.3,.7,.3,1);
+  border-radius: 1.5rem;
+  background: transparent;
+  isolation: isolate;
+  transition: border-radius 600ms cubic-bezier(.3,.7,.3,1);
 }
-.earth-stage.is-immersive { z-index: 35; filter: none; }
-.earth-globe-host {
+.earth-stage.is-detached {
+  position: fixed;
+  /* Keep the globe behind the dashboard throughout the transition. The
+     summary and node grids sit at z-index 2, so cards can cover the globe
+     during the first and last frames instead of it popping above them. */
+  z-index: 1;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+}
+/* Returning is behind the cards while the globe remains in its stable host. */
+.earth-stage.is-detached.is-returning { z-index: 1; }
+.earth-motion-frame {
+  position: absolute;
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(calc(var(--earth-render-scale, 1) * var(--earth-extra-scale, 1)));
-  transform-origin: center;
-  transition: transform 600ms cubic-bezier(.3,.7,.3,1);
+  top: -14px;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%) scale(var(--earth-inline-scale, 1));
+  transform-origin: center top;
 }
-.earth-stage.is-immersive { --earth-extra-scale: 1.06; }
+.earth-stage.is-detached .earth-motion-frame {
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  transform-origin: top left;
+  will-change: transform;
+}
+.earth-stage.is-expanded { border-radius: 0; }
+.earth-stage:not(.is-detached) .earth-exit { display: none; }
 .earth-flag img { width: 1.2rem; height: 1.2rem; border-radius: .18rem; box-shadow: 0 8px 20px rgb(15 23 42 / 24%); }
-.earth-counts { left: 0; top: 48px; gap: 8px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--background) 60%, transparent); padding: 2px 8px; font-size: 10px; }
+.earth-counts { left: 0; top: 48px; gap: 8px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--background) 60%, transparent); padding: 2px 8px; font-size: 10px; transform-origin: top left; will-change: transform; }
 .earth-counts i { width: 6px; height: 6px; }
 .earth-exit { top: 16px; right: 16px; width: 40px; height: 40px; border-radius: 8px; }
-.earth-stage.is-immersive .earth-exit { position: fixed; top: 16px; right: 16px; }
+.earth-stage.is-detached .earth-exit { top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); }
 
 .node-toolbar {
   display: flex;
@@ -635,7 +680,15 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .node-toolbar__search:not(.is-open):not(:focus-within) input { cursor: pointer; color: transparent; }
 .node-toolbar__search:not(.is-open):not(:focus-within) input::placeholder { color: transparent; }
 
-.node-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; margin-inline: 16px; }
+.node-card-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
+  margin-inline: 16px;
+}
 .node-card {
   position: relative;
   min-width: 0;
@@ -643,14 +696,16 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   overflow: hidden;
   border: 0;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--card) 82%, transparent);
+  background: rgb(241 245 249 / 74%);
   box-shadow: 0 12px 28px rgb(24 42 65 / 13%);
   color: var(--card-foreground);
   cursor: pointer;
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(14px) saturate(145%);
   transition: background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
 }
-.node-card:hover { background: var(--card); box-shadow: 0 16px 34px rgb(24 42 65 / 17%); transform: translateY(-2px); }
+.node-card:hover { background: rgb(248 250 252 / 80%); box-shadow: 0 16px 34px rgb(24 42 65 / 17%); transform: translateY(-2px); }
+.dark .node-card { background: rgb(10 14 22 / 82%); }
+.dark .node-card:hover { background: rgb(10 14 22 / 90%); }
 .node-card:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
 .node-card__header { display: flex; align-items: center; gap: 8px; height: 42px; padding: 8px 16px 0; }
 .node-card__status { position: relative; display: block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--destructive); }
@@ -770,13 +825,6 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .dark .node-detail-charts { box-shadow: none; }
 .node-detail-chart-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border: 0; padding: 0; }
 .node-chart-panel { border: 0; background: color-mix(in srgb, var(--background) 50%, transparent); }
-
-[data-earth-motion-item] { transition: opacity 400ms ease, transform 400ms cubic-bezier(.3,.7,.3,1) !important; transition-delay: 0ms; }
-.summary-tile[data-earth-motion-item] { transition-delay: 0ms; }
-.is-earth-immersive [data-earth-motion-item] { filter: none; }
-.is-earth-immersive .node-card-grid [data-earth-motion-item] { transition-delay: calc((var(--motion-index) - 8) * 25ms + 20ms); }
-.is-earth-immersive .node-toolbar__filters { --exit-x: -115vw; }
-.is-earth-immersive .node-toolbar__actions { --exit-x: 115vw; }
 
 @media (max-width: 1100px) {
   .overview-grid { grid-template-columns: 55% 45%; }
